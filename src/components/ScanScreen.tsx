@@ -1,22 +1,25 @@
 import { useState, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Scanner } from '@yudiel/react-qr-scanner';
-import { ArrowLeft, CheckCircle, XCircle, AlertCircle } from 'lucide-react';
-import { processPayment, getUserData } from '@/lib/storage';
+import { QRCodeSVG } from 'qrcode.react';
+import { ArrowLeft, CheckCircle, XCircle, AlertCircle, Smartphone } from 'lucide-react';
+import { initiatePayment, getUserData, type PaymentQRData } from '@/lib/storage';
 
 interface ScanScreenProps {
   onBack: () => void;
   onPaymentComplete: () => void;
 }
 
-type ScanState = 'scanning' | 'amount' | 'success' | 'error';
+type ScanState = 'scanning' | 'amount' | 'showPaymentQR' | 'success' | 'error';
 
 export function ScanScreen({ onBack, onPaymentComplete }: ScanScreenProps) {
   const [state, setState] = useState<ScanState>('scanning');
   const [scannedUser, setScannedUser] = useState<string>('');
   const [amount, setAmount] = useState('');
   const [error, setError] = useState('');
+  const [paymentQRData, setPaymentQRData] = useState<PaymentQRData | null>(null);
 
+  // Handle scanning receiver's identity QR
   const handleScan = useCallback((result: { rawValue: string }[]) => {
     if (result && result[0]) {
       try {
@@ -31,6 +34,7 @@ export function ScanScreen({ onBack, onPaymentComplete }: ScanScreenProps) {
     }
   }, []);
 
+  // Handle payment initiation - generates Payment QR for receiver
   const handlePayment = () => {
     const amountNum = parseFloat(amount);
     if (isNaN(amountNum) || amountNum <= 0) {
@@ -44,17 +48,22 @@ export function ScanScreen({ onBack, onPaymentComplete }: ScanScreenProps) {
       return;
     }
 
-    const result = processPayment(scannedUser, amountNum);
-    if (result.success) {
-      setState('success');
-      setTimeout(() => {
-        onPaymentComplete();
-        onBack();
-      }, 2000);
+    // Initiate payment - deducts sender balance and creates payment QR
+    const result = initiatePayment(scannedUser, amountNum);
+    
+    if (result.success && result.paymentQR) {
+      setPaymentQRData(result.paymentQR);
+      setState('showPaymentQR');
+      onPaymentComplete(); // Refresh sender's balance in UI
     } else {
       setError(result.message);
       setState('error');
     }
+  };
+
+  // Handle completion after receiver has scanned
+  const handleDone = () => {
+    onBack();
   };
 
   return (
@@ -75,7 +84,11 @@ export function ScanScreen({ onBack, onPaymentComplete }: ScanScreenProps) {
             </button>
             <div>
               <h1 className="text-white font-bold text-xl">Scan & Pay</h1>
-              <p className="text-white/70 text-sm">Scan QR to send money offline</p>
+              <p className="text-white/70 text-sm">
+                {state === 'showPaymentQR' 
+                  ? 'Show QR to complete payment' 
+                  : 'Scan QR to send money offline'}
+              </p>
             </div>
           </div>
         </div>
@@ -85,6 +98,7 @@ export function ScanScreen({ onBack, onPaymentComplete }: ScanScreenProps) {
       <div className="px-6 pt-8">
         <div className="max-w-md mx-auto">
           <AnimatePresence mode="wait">
+            {/* Step 1: Scan receiver's QR */}
             {state === 'scanning' && (
               <motion.div
                 key="scanning"
@@ -112,12 +126,13 @@ export function ScanScreen({ onBack, onPaymentComplete }: ScanScreenProps) {
                   </div>
                 </div>
                 <div className="p-6 text-center">
-                  <p className="text-foreground font-medium">Position QR code in frame</p>
-                  <p className="text-muted-foreground text-sm mt-1">Works offline when nearby</p>
+                  <p className="text-foreground font-medium">Step 1: Scan receiver's QR</p>
+                  <p className="text-muted-foreground text-sm mt-1">Position their identity QR in frame</p>
                 </div>
               </motion.div>
             )}
 
+            {/* Step 2: Enter amount */}
             {state === 'amount' && (
               <motion.div
                 key="amount"
@@ -130,7 +145,7 @@ export function ScanScreen({ onBack, onPaymentComplete }: ScanScreenProps) {
                   <div className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center mx-auto mb-4">
                     <CheckCircle className="w-8 h-8 text-primary" />
                   </div>
-                  <p className="text-muted-foreground">Sending to</p>
+                  <p className="text-muted-foreground">Step 2: Enter amount for</p>
                   <p className="text-xl font-bold text-foreground">{scannedUser}</p>
                 </div>
 
@@ -162,28 +177,82 @@ export function ScanScreen({ onBack, onPaymentComplete }: ScanScreenProps) {
                   disabled={!amount}
                   className="w-full py-4 rounded-xl gradient-primary text-white font-semibold shadow-button disabled:opacity-50 disabled:cursor-not-allowed transition-opacity"
                 >
-                  Pay ₹{amount || '0'}
+                  Generate Payment QR
                 </button>
               </motion.div>
             )}
 
-            {state === 'success' && (
+            {/* Step 3: Show Payment QR for receiver to scan */}
+            {state === 'showPaymentQR' && paymentQRData && (
               <motion.div
-                key="success"
-                initial={{ opacity: 0, scale: 0.8 }}
+                key="showPaymentQR"
+                initial={{ opacity: 0, scale: 0.95 }}
                 animate={{ opacity: 1, scale: 1 }}
-                className="bg-card rounded-3xl shadow-card border border-border/50 p-8 text-center"
+                exit={{ opacity: 0, scale: 0.95 }}
+                className="bg-card rounded-3xl shadow-card border border-border/50 p-6"
               >
-                <motion.div
-                  initial={{ scale: 0 }}
-                  animate={{ scale: 1 }}
-                  transition={{ type: 'spring', stiffness: 200, damping: 15 }}
-                  className="w-24 h-24 rounded-full gradient-success flex items-center justify-center mx-auto mb-6"
+                {/* Success indicator */}
+                <div className="text-center mb-4">
+                  <motion.div
+                    initial={{ scale: 0 }}
+                    animate={{ scale: 1 }}
+                    transition={{ type: 'spring', stiffness: 200, damping: 15 }}
+                    className="w-16 h-16 rounded-full gradient-success flex items-center justify-center mx-auto mb-3"
+                  >
+                    <CheckCircle className="w-8 h-8 text-white" />
+                  </motion.div>
+                  <h2 className="text-xl font-bold text-foreground">₹{paymentQRData.amount} Deducted</h2>
+                  <p className="text-muted-foreground text-sm">Your balance has been updated</p>
+                </div>
+
+                {/* Payment QR */}
+                <div className="relative mb-4">
+                  <div className="absolute inset-0 gradient-primary rounded-2xl blur-xl opacity-20" />
+                  <div className="relative bg-white p-4 rounded-2xl shadow-soft">
+                    <QRCodeSVG
+                      value={JSON.stringify(paymentQRData)}
+                      size={200}
+                      level="H"
+                      includeMargin
+                      className="w-full h-auto"
+                      bgColor="#ffffff"
+                      fgColor="#1a1a2e"
+                    />
+                  </div>
+                </div>
+
+                {/* Instructions */}
+                <div className="bg-warning/10 border border-warning/30 rounded-xl p-4 mb-4">
+                  <div className="flex items-start gap-3">
+                    <Smartphone className="w-5 h-5 text-warning mt-0.5 flex-shrink-0" />
+                    <div>
+                      <p className="font-semibold text-foreground text-sm">Step 3: Show this to receiver</p>
+                      <p className="text-muted-foreground text-xs mt-1">
+                        Ask <span className="font-medium">{paymentQRData.to}</span> to scan this Payment QR 
+                        using their "Scan Payment QR" button to receive ₹{paymentQRData.amount}.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Transaction details */}
+                <div className="bg-secondary/50 rounded-xl p-3 mb-4 text-xs">
+                  <div className="flex justify-between mb-1">
+                    <span className="text-muted-foreground">Transaction ID</span>
+                    <span className="font-mono text-foreground">{paymentQRData.tx_id}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">To</span>
+                    <span className="font-mono text-foreground">{paymentQRData.to}</span>
+                  </div>
+                </div>
+
+                <button
+                  onClick={handleDone}
+                  className="w-full py-4 rounded-xl border-2 border-border bg-secondary text-foreground font-semibold hover:bg-secondary/80 transition-colors"
                 >
-                  <CheckCircle className="w-12 h-12 text-white" />
-                </motion.div>
-                <h2 className="text-2xl font-bold text-foreground mb-2">Payment Sent!</h2>
-                <p className="text-muted-foreground">₹{amount} sent to {scannedUser}</p>
+                  Done
+                </button>
               </motion.div>
             )}
 
