@@ -69,7 +69,11 @@ const Index = () => {
             animate={{ opacity: 1, x: 0 }}
             exit={{ opacity: 0, x: -50 }}
           >
-            <ReceiveScreen userId={userData.userId} onBack={handleBack} />
+            <ReceiveScreen 
+              userId={userData.userId} 
+              onBack={handleBack} 
+              onPaymentReceived={refreshUserData}
+            />
           </motion.div>
         )}
 
