@@ -52,7 +52,7 @@ export function getUserData(): UserData {
   // Initialize new user
   const newUser: UserData = {
     userId: generateUserId(),
-    balance: 500, // Demo balance
+    balance: 10000, // Demo balance
     upiId: '',
     transactions: [],
     processedPayments: [],
