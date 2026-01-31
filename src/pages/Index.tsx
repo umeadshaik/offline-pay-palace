@@ -6,16 +6,21 @@ import { ReceiveScreen } from '@/components/ReceiveScreen';
 import { ScanScreen } from '@/components/ScanScreen';
 import { HistoryScreen } from '@/components/HistoryScreen';
 import { WithdrawScreen } from '@/components/WithdrawScreen';
+import { AuthFlow } from '@/components/auth/AuthFlow';
 import { getUserData, type UserData } from '@/lib/storage';
+import { useAuth } from '@/contexts/AuthContext';
 
 const Index = () => {
+  const { isAuthenticated, isLoading, authData, refreshAuth } = useAuth();
   const [activeTab, setActiveTab] = useState('home');
   const [userData, setUserData] = useState<UserData | null>(null);
 
   useEffect(() => {
-    const data = getUserData();
-    setUserData(data);
-  }, []);
+    if (isAuthenticated) {
+      const data = getUserData();
+      setUserData(data);
+    }
+  }, [isAuthenticated]);
 
   const refreshUserData = () => {
     const data = getUserData();
@@ -30,6 +35,37 @@ const Index = () => {
     setActiveTab('home');
   };
 
+  const handleAuthenticated = () => {
+    refreshAuth();
+    const data = getUserData();
+    setUserData(data);
+  };
+
+  // Loading state
+  if (isLoading) {
+    return (
+      <div className="min-h-screen gradient-primary flex items-center justify-center">
+        <motion.div
+          initial={{ opacity: 0, scale: 0.9 }}
+          animate={{ opacity: 1, scale: 1 }}
+          className="text-center"
+        >
+          <div className="w-16 h-16 rounded-2xl bg-white/20 flex items-center justify-center mx-auto mb-4 animate-pulse">
+            <span className="text-3xl">💸</span>
+          </div>
+          <h1 className="text-white text-2xl font-bold">OfflinePay</h1>
+          <p className="text-white/70 mt-2">Loading...</p>
+        </motion.div>
+      </div>
+    );
+  }
+
+  // Not authenticated - show auth flow
+  if (!isAuthenticated) {
+    return <AuthFlow onAuthenticated={handleAuthenticated} />;
+  }
+
+  // Authenticated but no user data yet
   if (!userData) {
     return (
       <div className="min-h-screen gradient-primary flex items-center justify-center">
@@ -38,11 +74,11 @@ const Index = () => {
           animate={{ opacity: 1, scale: 1 }}
           className="text-center"
         >
-          <div className="w-16 h-16 rounded-2xl bg-white/20 flex items-center justify-center mx-auto mb-4 animate-pulse-glow">
+          <div className="w-16 h-16 rounded-2xl bg-white/20 flex items-center justify-center mx-auto mb-4 animate-pulse">
             <span className="text-3xl">💸</span>
           </div>
           <h1 className="text-white text-2xl font-bold">OfflinePay</h1>
-          <p className="text-white/70 mt-2">Loading...</p>
+          <p className="text-white/70 mt-2">Setting up wallet...</p>
         </motion.div>
       </div>
     );
@@ -58,7 +94,11 @@ const Index = () => {
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
           >
-            <HomeScreen userData={userData} onNavigate={handleNavigate} />
+            <HomeScreen 
+              userData={userData} 
+              onNavigate={handleNavigate}
+              mobileNumber={authData?.mobileNumber}
+            />
           </motion.div>
         )}
 
